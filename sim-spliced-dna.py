@@ -17,8 +17,18 @@ from Pipe import Pipe
 from ConfigFile import ConfigFile
 from Translation import Translation
 
+#============================================
 # DEPENDENCIES:
 #   module load htslib
+#   python version 3.x
+#
+# EXAMPLE CONFIG FILE:
+#   util-dir = /hpc/home/bmajoros/twobit
+#   genome = hg19.2bit
+#   aligned-rna = HG00096.sam
+#   vcf = HG00096.vcf.gz
+#   gff = gencode1000.gff
+#============================================
 
 class Variant:
     def __init__(self,fields):
