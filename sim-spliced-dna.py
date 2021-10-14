@@ -41,7 +41,6 @@ def makeAltGene(gene,variants):
         array=list(transcript.sequence)
         for variant in variants:
             pos=transcript.mapToTranscript(variant.genomicPos)
-            #print("strlen=",len(transcript.sequence)," genomicPos=",variant.genomicPos,"transcriptPos=",pos)
             if(pos<0): continue
             array[pos]=variant.alt
             changes=True
@@ -100,13 +99,10 @@ def loadTranscriptSeqs(gene,genome,path):
     Chr=gene.getSubstrate()
     strand=gene.getStrand()
     for transcript in gene.transcripts:
-        #print("gene=",gene.getID()," transcript=",transcript.getID())
         transcript.sequence=""
         transcript.exons=transcript.getRawExons()
-        #print(len(transcript.exons),"exons")
         for exon in transcript.rawExons:
             exon.sequence=readFrom2bit(genome,path,Chr,exon.begin,exon.end)
-            #print("exon="+str(exon.begin)+"-"+str(exon.end),"seq=",len(exon.sequence))
             exon.sequence=exon.sequence.upper()
             if(strand=="-"):
                 exon.sequence=Translation.reverseComplement(exon.sequence)
@@ -114,8 +110,6 @@ def loadTranscriptSeqs(gene,genome,path):
                 raise Exception("N FOUND: Chr="+Chr+"begin="+str(exon.begin)+\
                                 "end="+str(exon.end))
             transcript.sequence+=exon.sequence
-            #print("TRANSCRIPT=",transcript.sequence,"added",len(exon.sequence),"exon="+str(exon.begin)+"-"+str(exon.end))
-#    if(gene.getStrand()=="-"):
         
 def pickTranscript(refGene,altGene):
     n=refGene.getNumTranscripts()
