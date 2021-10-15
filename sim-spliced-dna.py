@@ -29,6 +29,7 @@ from Translation import Translation
 #   aligned-rna = HG00096.sam
 #   vcf = HG00096.vcf.gz
 #   gff = gencode1000.gff
+#   original-read-len = 75
 #============================================
 
 # GLOBAL VARIABLES:
