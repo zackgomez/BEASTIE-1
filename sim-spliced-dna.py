@@ -30,10 +30,16 @@ from Translation import Translation
 #   gff = gencode1000.gff
 #============================================
 
+# GLOBAL VARIABLES:
+matches=0 # number of sites containing alt or ref allele in transcript
+mismatches=0 # number of sites having neither ref nor alt allele in transcript
+
+# CLASSES:
+
 class Variant:
     def __init__(self,fields):
         self.Chr=fields[0]
-        self.genomicPos=int(fields[1])
+        self.genomicPos=int(fields[1])-1 # convert to 0-based
         self.ref=fields[3]
         self.alt=fields[4]
 
@@ -44,7 +50,10 @@ class SamRecord:
         self.readLen=len(fields[9])
         self.qual=fields[10]
 
+# FUNCTIONS:
+        
 def makeAltGene(gene,variants):
+    global matches; global mismatches
     altGene=copy.deepcopy(gene)
     changes=False
     for transcript in gene.transcripts:
@@ -52,6 +61,11 @@ def makeAltGene(gene,variants):
         for variant in variants:
             pos=transcript.mapToTranscript(variant.genomicPos)
             if(pos<0): continue
+            c=array[pos]
+            if(gene.getStrand()=="-"):
+                c=Translation.reverseComplement(c)
+            if(c==variant.ref or c==variant.alt): matches+=1
+            else: mismatches+=1
             array[pos]=variant.alt
             changes=True
         transcript.sequence="".join(array)
@@ -138,9 +152,9 @@ def printRead(header,seq,qual):
 # main()
 #=========================================================================
 if(len(sys.argv)!=3):
-    exit(ProgramName.get()+" <config-file> <#reads-per-gene>\n")
-(configFile,NUM_READS)=sys.argv[1:]
-NUM_READS=int(NUM_READS)
+    exit(ProgramName.get()+" <config-file> <per-base-read-depth>\n")
+(configFile,DEPTH)=sys.argv[1:]
+DEPTH=int(DEPTH)
 
 # Load config file
 configFile=ConfigFile(configFile)
@@ -149,6 +163,7 @@ genome2bit=configFile.lookupOrDie("genome")
 vcfFile=configFile.lookupOrDie("vcf")
 samFile=configFile.lookupOrDie("aligned-rna")
 gffFile=configFile.lookupOrDie("gff")
+readLen=int(configFile.lookupOrDie("original-read-len"))
 
 # Load VCF
 #print("reading VCF...",file=sys.stderr,flush=True)
@@ -165,13 +180,15 @@ nextReadID=1
 IN=open(samFile,"rt")
 for gene in genes:
     loadTranscriptSeqs(gene,genome2bit,twoBitDir)
+    length=gene.longestTranscript().getLength()
+    numReads=int(DEPTH*length/readLen)
     variants=getGeneVariants(gene,vcfFile)
     if(len(variants)==0): continue
     refGene=gene
     altGene=makeAltGene(gene,variants)
     if(altGene is None): continue # no variants in exons
     #print(len(variants),"variants in this gene")
-    for i in range(NUM_READS):
+    for i in range(numReads):
         (refTranscript,altTranscript)=pickTranscript(refGene,altGene)
         rec1=nextSamRec(IN,samFile)
         rec2=nextSamRec(IN,samFile)
@@ -185,6 +202,9 @@ for gene in genes:
         printRead("@READ"+str(nextReadID)+" SIM",altSeq1,qual1)
         printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2)
         nextReadID+=1
+matchRate=float(matches)/float(matches+mismatches)
+print(matchRate*100,"% exonic sites had ref or alt: ",matches,"/",
+      matches+mismatches,sep="",file=sys.stderr)
 
 
         
