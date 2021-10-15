@@ -12,6 +12,7 @@ import sys
 import ProgramName
 import random
 import copy
+import gzip
 from GffTranscriptReader import GffTranscriptReader
 from Pipe import Pipe
 from ConfigFile import ConfigFile
@@ -145,15 +146,15 @@ def getGeneVariants(gene,vcfFile):
     return tabixVCF(vcfFile,gene.getSubstrate(),gene.getBegin(),
                     gene.getEnd())
 
-def printRead(header,seq,qual):
-    print(header+"\n"+seq+"\n+\n"+qual)
+def printRead(header,seq,qual,FH):
+    print(header+"\n"+seq+"\n+\n"+qual,file=FH)
 
 #=========================================================================
 # main()
 #=========================================================================
-if(len(sys.argv)!=3):
-    exit(ProgramName.get()+" <config-file> <per-base-read-depth>\n")
-(configFile,DEPTH)=sys.argv[1:]
+if(len(sys.argv)!=5):
+    exit(ProgramName.get()+" <config-file> <per-base-read-depth> <out-read1.gz> <out-read2.gz>\n")
+(configFile,DEPTH,outFile1,outFile2)=sys.argv[1:]
 DEPTH=int(DEPTH)
 
 # Load config file
@@ -165,14 +166,14 @@ samFile=configFile.lookupOrDie("aligned-rna")
 gffFile=configFile.lookupOrDie("gff")
 readLen=int(configFile.lookupOrDie("original-read-len"))
 
-# Load VCF
-#print("reading VCF...",file=sys.stderr,flush=True)
-#loadVCF(vcfFile)
-
 # Load GFF
 gffReader=GffTranscriptReader()
 print("reading GFF...",file=sys.stderr,flush=True)
 genes=gffReader.loadGenes(gffFile)
+
+# Create output files
+OUT1=gzip.open(outFile1,"wt")
+OUT2=gzip.open(outFile2,"wt")
 
 # Simulate
 print("simulating...",file=sys.stderr,flush=True)
@@ -196,11 +197,11 @@ for gene in genes:
                     twoBitDir)
         if(sim is None): break # gene is shorter than fragment length
         (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
-        printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1)
-        printRead("@READ"+str(nextReadID)+" SIM",refSeq2,qual2)
+        printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1,OUT1)
+        printRead("@READ"+str(nextReadID)+" SIM",refSeq2,qual2,OUT2)
         nextReadID+=1
-        printRead("@READ"+str(nextReadID)+" SIM",altSeq1,qual1)
-        printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2)
+        printRead("@READ"+str(nextReadID)+" SIM",altSeq1,qual1,OUT1)
+        printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2,OUT2)
         nextReadID+=1
 matchRate=float(matches)/float(matches+mismatches)
 print(matchRate*100,"% exonic sites had ref or alt: ",matches,"/",
