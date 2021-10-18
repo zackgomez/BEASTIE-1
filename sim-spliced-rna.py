@@ -100,13 +100,13 @@ def tabixVCF(vcfFile,Chr,begin,end):
         records.append(variant)
     return records
 
-def simRead(refTranscript,altTranscript,rec1,rec2,genome,path):
+def simRead(refTranscript,altTranscript,rec1,rec2,genome,path,fragLen):
     L=len(refTranscript.sequence)
-    if(L<rec1.fragLen or L<rec1.readLen or L<rec2.readLen): return None
-    lastStart=L-rec1.fragLen
+    if(L<fragLen or L<readLen or L<readLen): return None
+    lastStart=L-fragLen
     start1=random.randrange(lastStart+1)
     end1=start1+rec1.readLen
-    end2=start1+rec1.fragLen
+    end2=start1+fragLen
     start2=end2-rec2.readLen
     refSeq1=refTranscript.sequence[start1:end1]
     refSeq2=refTranscript.sequence[start2:end2]
@@ -182,7 +182,7 @@ fragLenFile=configFile.lookupOrDie("fragment-lengths")
 gffReader=GffTranscriptReader()
 print("reading GFF...",file=sys.stderr,flush=True)
 genes=gffReader.loadGenes(gffFile)
-loadFragLens(fragLenFile)
+fragLens=loadFragLens(fragLenFile)
 
 # Create output files
 OUT1=gzip.open(outFile1,"wt")
@@ -206,8 +206,9 @@ for gene in genes:
         (refTranscript,altTranscript)=pickTranscript(refGene,altGene)
         rec1=nextSamRec(IN,samFile)
         rec2=nextSamRec(IN,samFile)
+        fragLen=fragLens[random.randrange(len(fragLens))]
         sim=simRead(refTranscript,altTranscript,rec1,rec2,genome2bit,
-                    twoBitDir)
+                    twoBitDir,fragLen)
         if(sim is None): break # gene is shorter than fragment length
         (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
         printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1,OUT1)
