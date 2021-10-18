@@ -22,6 +22,7 @@ from Translation import Translation
 # DEPENDENCIES:
 #   module load htslib
 #   python version 3.x
+#   VCF file must be bzipped and indexed with tabix
 #
 # EXAMPLE CONFIG FILE:
 #   util-dir = /hpc/home/bmajoros/twobit
