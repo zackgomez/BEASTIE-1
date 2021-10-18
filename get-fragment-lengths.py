@@ -88,4 +88,4 @@ for gene in genes:
         print(fragLen,sep="\t")
         n+=1
         if(n>=maxN): break
-    
+    if(n>=maxN): break

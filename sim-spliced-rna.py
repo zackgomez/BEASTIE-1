@@ -49,8 +49,8 @@ class Variant:
 
 class SamRecord:
     def __init__(self,fields):
-        self.fragLen=int(fields[8])
-        if(self.fragLen<0): self.fragLen=-self.fragLen
+        #self.fragLen=int(fields[8])
+        #if(self.fragLen<0): self.fragLen=-self.fragLen
         self.readLen=len(fields[9])
         self.qual=fields[10]
 
@@ -178,10 +178,11 @@ gffFile=configFile.lookupOrDie("gff")
 readLen=int(configFile.lookupOrDie("original-read-len"))
 fragLenFile=configFile.lookupOrDie("fragment-lengths")
 
-# Load GFF
+# Load GFF and fragment lengths
 gffReader=GffTranscriptReader()
 print("reading GFF...",file=sys.stderr,flush=True)
 genes=gffReader.loadGenes(gffFile)
+loadFragLens(fragLenFile)
 
 # Create output files
 OUT1=gzip.open(outFile1,"wt")
