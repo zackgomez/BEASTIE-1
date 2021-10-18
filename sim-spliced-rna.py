@@ -28,6 +28,7 @@ from Translation import Translation
 #   util-dir = /hpc/home/bmajoros/twobit
 #   genome = hg19.2bit
 #   aligned-rna = HG00096.sam
+#   fragment-lengths = fragmentlengths.txt
 #   vcf = HG00096.vcf.gz
 #   gff = gencode1000.gff
 #   original-read-len = 75
@@ -151,6 +152,14 @@ def getGeneVariants(gene,vcfFile):
 def printRead(header,seq,qual,FH):
     print(header+"\n"+seq+"\n+\n"+qual,file=FH)
 
+def loadFragLens(filename):
+    array=[]
+    with open(filename,"rt") as IN:
+        for line in IN:
+            L=int(line)
+            array.append(L)
+    return array
+    
 #=========================================================================
 # main()
 #=========================================================================
@@ -167,6 +176,7 @@ vcfFile=configFile.lookupOrDie("vcf")
 samFile=configFile.lookupOrDie("aligned-rna")
 gffFile=configFile.lookupOrDie("gff")
 readLen=int(configFile.lookupOrDie("original-read-len"))
+fragLenFile=configFile.lookupOrDie("fragment-lengths")
 
 # Load GFF
 gffReader=GffTranscriptReader()

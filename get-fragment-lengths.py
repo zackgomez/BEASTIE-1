@@ -59,15 +59,17 @@ def tabixSAM(filename,Chr,begin,end):
 #=========================================================================
 # main()
 #=========================================================================
-if(len(sys.argv)!=3):
-    exit(ProgramName.get()+" <indexed-sam.gz> <gff>\n")
-(samFile,gffFile)=sys.argv[1:]
+if(len(sys.argv)!=4):
+    exit(ProgramName.get()+" <indexed-sam.gz> <gff> <max-values>\n")
+(samFile,gffFile,maxN)=sys.argv[1:]
+maxN=int(maxN)
 
 # Load GFF
 gffReader=GffTranscriptReader()
 genes=gffReader.loadGenes(gffFile)
 
 # Process SAM records gene-by-gene
+n=0
 for gene in genes:
     transcript=gene.longestTranscript()
     transcript.exons=transcript.getRawExons()
@@ -83,5 +85,7 @@ for gene in genes:
         if(end<0): continue
         fragLen=abs(end-begin)
         if(fragLen<100): continue
-        print(fragLen,length,sep="\t")
+        print(fragLen,sep="\t")
+        n+=1
+        if(n>=maxN): break
     
