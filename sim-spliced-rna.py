@@ -216,7 +216,7 @@ for gene in genes:
     length=gene.longestTranscript().getLength()
     numReads=int(DEPTH*length/readLen)
     variants=getGeneVariants(gene,vcfFile)
-    if(len(variants)==0): continue
+    #if(len(variants)==0): continue
     maternal=makeAltCopy(gene,0,variants)
     paternal=makeAltCopy(gene,1,variants)
     #if(paternal is None): continue # no variants in exons
