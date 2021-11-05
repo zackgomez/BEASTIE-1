@@ -17,12 +17,15 @@ from GffTranscriptReader import GffTranscriptReader
 from Pipe import Pipe
 from ConfigFile import ConfigFile
 from Translation import Translation
+from Rex import Rex
 
 #============================================
 # DEPENDENCIES:
 #   module load htslib
 #   python version 3.x
-#   VCF file must be bzipped and indexed with tabix
+#   VCF file must be bzipped and indexed with tabix.
+#   VCF must contain only one sample (individual).
+#   VCF must include all sites, including homozygous and heterozygous sites.
 #
 # EXAMPLE CONFIG FILE:
 #   util-dir = /hpc/home/bmajoros/twobit
@@ -37,6 +40,7 @@ from Translation import Translation
 # GLOBAL VARIABLES:
 matches=0 # number of sites containing alt or ref allele in transcript
 mismatches=0 # number of sites having neither ref nor alt allele in transcript
+rex=Rex()
 
 # CLASSES:
 
@@ -46,6 +50,19 @@ class Variant:
         self.genomicPos=int(fields[1])-1 # convert to 0-based
         self.ref=fields[3]
         self.alt=fields[4]
+        genotype=fields[9]
+        self.genotype=None
+        if(rex.find("(\d)\|(\d)",genotype)):
+            self.genotype=(int(rex[1]),int(rex[2]))
+            if(self.genotype[0] not in {0,1} or
+               self.genotype[1] not in {0,1}):
+                self.genotype=None
+    def isOK(self):
+        return self.genotype is not None
+    def isHet(self):
+        return self.genotype[0]!=self.genotype[1]
+    def isHomozygousAlt(self):
+        return self.genotype[0]>0 and self.genotype[1]>0
 
 class SamRecord:
     def __init__(self,fields):
@@ -56,25 +73,24 @@ class SamRecord:
 
 # FUNCTIONS:
         
-def makeAltGene(gene,variants):
+def makeAltCopy(gene,haplotype,variants):
     global matches; global mismatches
     altGene=copy.deepcopy(gene)
-    changes=False
     for transcript in gene.transcripts:
         array=list(transcript.sequence)
         for variant in variants:
             pos=transcript.mapToTranscript(variant.genomicPos)
             if(pos<0): continue
-            c=array[pos]
-            if(gene.getStrand()=="-"):
-                c=Translation.reverseComplement(c)
-            if(c==variant.ref or c==variant.alt): matches+=1
-            else: mismatches+=1
-            array[pos]=variant.alt
-            changes=True
+            if(haplotype==0): # count mismatches (sanity check)
+                c=array[pos]
+                if(gene.getStrand()=="-"): c=Translation.reverseComplement(c)
+                if(c==variant.ref or c==variant.alt): matches+=1
+                else: mismatches+=1
+            if(variant.genotype[haplotype]>0):
+                array[pos]=variant.alt
         transcript.sequence="".join(array)
-    return altGene if changes else None
-        
+    return altGene
+
 def nextSamRec(fh,filename):
     while(True):
         line=fh.readline()
@@ -96,7 +112,10 @@ def tabixVCF(vcfFile,Chr,begin,end):
     for line in lines.split("\n"):
         if(len(line)==0 or line[0]=="#"): continue
         fields=line.rstrip().split()
+        if(len(fields)!=10): raise Exception("Expecting 10 fields in VCF file")
         variant=Variant(fields)
+        if(not variant.isOK()): continue
+        if(not variant.isHet() and not variant.isHomozygousAlt()): continue
         records.append(variant)
     return records
 
@@ -198,16 +217,16 @@ for gene in genes:
     numReads=int(DEPTH*length/readLen)
     variants=getGeneVariants(gene,vcfFile)
     if(len(variants)==0): continue
-    refGene=gene
-    altGene=makeAltGene(gene,variants)
-    if(altGene is None): continue # no variants in exons
+    maternal=makeAltCopy(gene,0,variants)
+    paternal=makeAltCopy(gene,1,variants)
+    #if(paternal is None): continue # no variants in exons
     #print(len(variants),"variants in this gene")
     for i in range(numReads):
-        (refTranscript,altTranscript)=pickTranscript(refGene,altGene)
+        (matTranscript,patTranscript)=pickTranscript(maternal,paternal)
         rec1=nextSamRec(IN,samFile)
         rec2=nextSamRec(IN,samFile)
         fragLen=fragLens[random.randrange(len(fragLens))]
-        sim=simRead(refTranscript,altTranscript,rec1,rec2,genome2bit,
+        sim=simRead(matTranscript,patTranscript,rec1,rec2,genome2bit,
                     twoBitDir,fragLen)
         if(sim is None): break # gene is shorter than fragment length
         (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
@@ -220,6 +239,12 @@ for gene in genes:
 matchRate=float(matches)/float(matches+mismatches)
 print(matchRate*100,"% exonic sites had ref or alt: ",matches,"/",
       matches+mismatches,sep="",file=sys.stderr)
+
+# MY SAM FILE:
+# HWI-ST661:130:C037KACXX:6:2307:8186:172941      99      chr1    13170   109     75M     =       13278   183     CTGTTGGGGAGGCAGCTGTAACTCAAAGCCTTAGCCTCTGTTCCCACGAAGGCAGGGCCATCAGGCACCAAAGGG     @@@DDFFFHHFFFJIIIIHECCCGHIICEHJCEBFHEGIGIIDGHBDGGHDEGG?HFFFFFEEED>ADDBDBDDB     RG:Z:0  NM:i:3  XT:A:U  md:Z:75 XA:Z:chrY,-59359485,75M,1;chrX,-155256479,75M,1;chr9,+13283,75M,1;chr2,-114357772,75M,1;chr15,-102517926,75M,2;chr12,-92369,75M,2;
+
+# SCARLETT'S SAM FILE:
+# ERR188231.12567592      163     chr10   93307   255     75M     =       93442   210     GCAAAGTAACTGCTGTTCTTATCTTGAATGTTGAACATTTGTTCATCCACCTCCCTCATGGGCATGCGACCCCTG     CCCFFFDFHHHHHJJJJIJJJJJJJJJIJIIIJJJJIJJJJIJJIJJIJJGIIJIIJIJIJJIJJJJIIIJHHFF     MD:Z:75 PG:Z:MarkDuplicates     NH:i:1  HI:i:1  jI:B:i,-1       NM:i:0  jM:B:c,-1       nM:i:1  AS:i:146
 
 
         
