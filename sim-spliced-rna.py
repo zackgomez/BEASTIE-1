@@ -74,19 +74,40 @@ class SamRecord:
 # FUNCTIONS:
         
 def makeAltCopy(gene,haplotype,variants):
+    #print("make")
+    # maternal=makeAltCopy(gene,0,variants)
     global matches; global mismatches
     altGene=copy.deepcopy(gene)
     for transcript in gene.transcripts:
         array=list(transcript.sequence)
-        for variant in variants:
+        for idx, variant in enumerate(variants):
             pos=transcript.mapToTranscript(variant.genomicPos)
+            #pos=variant.genomicPos
             if(pos<0): continue
-            if(haplotype==0): # count mismatches (sanity check)
-                c=array[pos]
-                if(gene.getStrand()=="-"): c=Translation.reverseComplement(c)
-                if(c==variant.ref or c==variant.alt): matches+=1
-                else: mismatches+=1
-            if(variant.genotype[haplotype]>0):
+            print("    %sth variant, pos is %s"%(idx+1,pos))
+            if haplotype == 0:
+                print("    Assigned haplotype is maternal: %s"%(haplotype))
+            else:
+                print("    Assigned haplotype is paternal: %s"%(haplotype))
+            print("    variant genotype: %s"%(str(variant.genotype)))
+            print("    array size is %s, index is %s, pos is %s"%(len(array),idx,pos))
+            #print(array[idx])
+            #print(array[pos])
+            #break
+            if(int(haplotype)==0): # count mismatches (sanity check)
+                allele=array[pos]
+                print("    allele : %s ; variant.ref : %s ; variant.alt : %s"%(allele,variant.ref,variant.alt))
+                if(gene.getStrand()=="-"): allele=Translation.reverseComplement(allele)
+                if(allele==variant.ref or allele==variant.alt): 
+                    matches+=1
+                    if(allele==variant.ref):
+                        print("        match to REF")
+                    else:
+                        print("        match to ALT")
+                else: 
+                    print("        mismatch")
+                    mismatches+=1
+            if(variant.genotype[int(haplotype)]>0):
                 array[pos]=variant.alt
         transcript.sequence="".join(array)
     return altGene
@@ -121,7 +142,7 @@ def tabixVCF(vcfFile,Chr,begin,end):
 
 def simRead(refTranscript,altTranscript,rec1,rec2,genome,path,fragLen):
     L=len(refTranscript.sequence)
-    if(L<fragLen or L<readLen or L<readLen): return None
+    if(L<fragLen or L<readLen): return None
     lastStart=L-fragLen
     start1=random.randrange(lastStart+1)
     end1=start1+rec1.readLen
@@ -183,7 +204,7 @@ def loadFragLens(filename):
 # main()
 #=========================================================================
 if(len(sys.argv)!=5):
-    exit(ProgramName.get()+" <config-file> <per-base-read-depth> <out-read1.gz> <out-read2.gz>\n")
+    exit(ProgramName.get()+" <config-file> <per-base-read-depth> <out-read1.gz> <out-read2.gz> <prefix>\n")
 (configFile,DEPTH,outFile1,outFile2)=sys.argv[1:]
 DEPTH=int(DEPTH)
 
@@ -196,6 +217,7 @@ samFile=configFile.lookupOrDie("aligned-rna")
 gffFile=configFile.lookupOrDie("gff")
 readLen=int(configFile.lookupOrDie("original-read-len"))
 fragLenFile=configFile.lookupOrDie("fragment-lengths")
+file_prefix=configFile.lookupOrDie("prefix")
 
 # Load GFF and fragment lengths
 gffReader=GffTranscriptReader()
@@ -209,36 +231,62 @@ OUT2=gzip.open(outFile2,"wt")
 
 # Simulate
 print("simulating...",file=sys.stderr,flush=True)
-nextReadID=1
+nextReadID=0
 IN=open(samFile,"rt")
-for gene in genes:
-    loadTranscriptSeqs(gene,genome2bit,twoBitDir)
-    length=gene.longestTranscript().getLength()
-    numReads=int(DEPTH*length/readLen)
-    variants=getGeneVariants(gene,vcfFile)
-    #if(len(variants)==0): continue
-    maternal=makeAltCopy(gene,0,variants)
-    paternal=makeAltCopy(gene,1,variants)
-    #if(paternal is None): continue # no variants in exons
-    #print(len(variants),"variants in this gene")
-    for i in range(numReads):
-        (matTranscript,patTranscript)=pickTranscript(maternal,paternal)
-        rec1=nextSamRec(IN,samFile)
-        rec2=nextSamRec(IN,samFile)
-        fragLen=fragLens[random.randrange(len(fragLens))]
-        sim=simRead(matTranscript,patTranscript,rec1,rec2,genome2bit,
-                    twoBitDir,fragLen)
-        if(sim is None): break # gene is shorter than fragment length
-        (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
-        printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1,OUT1)
-        printRead("@READ"+str(nextReadID)+" SIM",refSeq2,qual2,OUT2)
-        nextReadID+=1
-        printRead("@READ"+str(nextReadID)+" SIM",altSeq1,qual1,OUT1)
-        printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2,OUT2)
-        nextReadID+=1
+num_gene=0
+
+# output list for debugging purpose
+#
+with open(file_prefix+"_geneID-numReads.txt", 'w') as file_handler:
+    for idx,gene in enumerate(genes):
+        num_gene+=1
+        geneid = gene.getId()
+        loadTranscriptSeqs(gene,genome2bit,twoBitDir)
+        length=gene.longestTranscript().getLength()
+        numReads=int(DEPTH*length/readLen)
+        #
+        file_handler.write("%s,%s\n"%(geneid,numReads))
+        #
+        variants=getGeneVariants(gene,vcfFile)
+        print("\t%sth gene: %s, %s reads, %s variants in this gene"%(idx+1,geneid,numReads,len(variants)))
+        #if(len(variants)==0): continue
+        maternal=makeAltCopy(gene,0,variants)
+        #print(maternal)
+        paternal=makeAltCopy(gene,1,variants)
+        #print(paternal)
+        #if(paternal is None): continue # no variants in exons
+        for i in range(numReads):
+            #print(">>>> num reads : %s"%(i))
+            (matTranscript,patTranscript)=pickTranscript(maternal,paternal)
+            rec1=nextSamRec(IN,samFile)
+            rec2=nextSamRec(IN,samFile)
+            fragLen=fragLens[random.randrange(len(fragLens))]
+            while length < fragLen:
+                fragLen=fragLens[random.randrange(len(fragLens))]
+                #print("%s >= %s"%(length,fragLen))
+            sim=simRead(matTranscript,patTranscript,rec1,rec2,genome2bit,
+                            twoBitDir,fragLen)
+            if(sim is None): 
+                #print(">>>>>>> break")
+                break # gene is shorter than fragment length
+            (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
+            printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1,OUT1)
+            printRead("@READ"+str(nextReadID)+" SIM",refSeq2,qual2,OUT2)
+            nextReadID+=1
+            printRead("@READ"+str(nextReadID)+" SIM",altSeq1,qual1,OUT1)
+            printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2,OUT2)
+            nextReadID+=1
+
+geneId_file=file_prefix+"_geneID_debug.txt"
+numReads_file=file_prefix+"_numReads_debug.txt"
+print("saved debugging lists!")
+print(">> total geneID processed: %d"%(num_gene))
+print(">> total ReadID processed: %d"%(nextReadID))
+#matches=0 # number of sites containing alt or ref allele in transcript
+#mismatches=0 # number of sites having neither ref nor alt allele in transcript
+print("matches: %s , mismatches : %d"%(matches,mismatches))
 matchRate=float(matches)/float(matches+mismatches)
-print(matchRate*100,"% exonic sites had ref or alt: ",matches,"/",
-      matches+mismatches,sep="",file=sys.stderr)
+print("%s percent of exonic sites had ref or alt "%(matchRate*100))
 
 # MY SAM FILE:
 # HWI-ST661:130:C037KACXX:6:2307:8186:172941      99      chr1    13170   109     75M     =       13278   183     CTGTTGGGGAGGCAGCTGTAACTCAAAGCCTTAGCCTCTGTTCCCACGAAGGCAGGGCCATCAGGCACCAAAGGG     @@@DDFFFHHFFFJIIIIHECCCGHIICEHJCEBFHEGIGIIDGHBDGGHDEGG?HFFFFFEEED>ADDBDBDDB     RG:Z:0  NM:i:3  XT:A:U  md:Z:75 XA:Z:chrY,-59359485,75M,1;chrX,-155256479,75M,1;chr9,+13283,75M,1;chr2,-114357772,75M,1;chr15,-102517926,75M,2;chr12,-92369,75M,2;
