@@ -142,6 +142,7 @@ def tabixVCF(vcfFile,Chr,begin,end):
 
 def simRead(refTranscript,altTranscript,rec1,rec2,genome,path,fragLen):
     L=len(refTranscript.sequence)
+    print("        transcript length: %d, fragment length: %d, read length: %d"%(L,fragLen,readLen))
     if(L<fragLen or L<readLen): return None
     lastStart=L-fragLen
     start1=random.randrange(lastStart+1)
@@ -234,7 +235,7 @@ print("simulating...",file=sys.stderr,flush=True)
 nextReadID=0
 IN=open(samFile,"rt")
 num_gene=0
-
+n_break=0
 # output list for debugging purpose
 #
 with open(file_prefix+"_geneID-numReads.txt", 'w') as file_handler:
@@ -245,10 +246,10 @@ with open(file_prefix+"_geneID-numReads.txt", 'w') as file_handler:
         length=gene.longestTranscript().getLength()
         numReads=int(DEPTH*length/readLen)
         #
+        print("write to file %s,%s"%(geneid,numReads))
         file_handler.write("%s,%s\n"%(geneid,numReads))
         #
         variants=getGeneVariants(gene,vcfFile)
-        print("\t%sth gene: %s, %s reads, %s variants in this gene"%(idx+1,geneid,numReads,len(variants)))
         #if(len(variants)==0): continue
         maternal=makeAltCopy(gene,0,variants)
         #print(maternal)
@@ -256,18 +257,26 @@ with open(file_prefix+"_geneID-numReads.txt", 'w') as file_handler:
         #print(paternal)
         #if(paternal is None): continue # no variants in exons
         for i in range(numReads):
-            #print(">>>> num reads : %s"%(i))
+            print("%sth gene: %s (total %s reads,%s variants) >>>  %s th num reads:"%(idx+1,geneid,numReads,len(variants),i))
             (matTranscript,patTranscript)=pickTranscript(maternal,paternal)
+            print("        maternal transcript length: %d"%(len(matTranscript.sequence)))
+            print("        paternal transcript length: %d"%(len(patTranscript.sequence)))
+            length = matTranscript.getLength()
+            print("        maternal transcript length: %d"%(length))
             rec1=nextSamRec(IN,samFile)
             rec2=nextSamRec(IN,samFile)
             fragLen=fragLens[random.randrange(len(fragLens))]
-            while length < fragLen:
-                fragLen=fragLens[random.randrange(len(fragLens))]
-                #print("%s >= %s"%(length,fragLen))
+            n_while_loop=0
+            if length < fragLen:
+                fragLen = length
+            print("        # while loop (length of transcript < fragLen sampled): %d"%(n_while_loop))
+            print("        longest transcript length %s >= fragment length %s"%(length,fragLen))
             sim=simRead(matTranscript,patTranscript,rec1,rec2,genome2bit,
                             twoBitDir,fragLen)
             if(sim is None): 
-                #print(">>>>>>> break")
+                print("        >>>>>>>>>>>")
+                print("        >>>>>>>>>>> break: gene is shorter than fragment length")
+                n_break+=1
                 break # gene is shorter than fragment length
             (refSeq1,altSeq1,qual1,refSeq2,altSeq2,qual2)=sim
             printRead("@READ"+str(nextReadID)+" SIM",refSeq1,qual1,OUT1)
@@ -277,11 +286,11 @@ with open(file_prefix+"_geneID-numReads.txt", 'w') as file_handler:
             printRead("@READ"+str(nextReadID)+" SIM",altSeq2,qual2,OUT2)
             nextReadID+=1
 
-geneId_file=file_prefix+"_geneID_debug.txt"
-numReads_file=file_prefix+"_numReads_debug.txt"
+
 print("saved debugging lists!")
 print(">> total geneID processed: %d"%(num_gene))
 print(">> total ReadID processed: %d"%(nextReadID))
+print(">> total num breaks /gene is shorter than fragment length : %d"%(n_break))
 #matches=0 # number of sites containing alt or ref allele in transcript
 #mismatches=0 # number of sites having neither ref nor alt allele in transcript
 print("matches: %s , mismatches : %d"%(matches,mismatches))
