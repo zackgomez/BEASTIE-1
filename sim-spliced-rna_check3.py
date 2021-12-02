@@ -111,7 +111,7 @@ class SamRecord:
 # FUNCTIONS:
 
 
-def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,variants)
+def makeAltCopy(gene, haplotype, variants):  # =makeAltCopy(gene,0,variants)
     global matches
     global mismatches
     altGene = copy.deepcopy(gene)
@@ -123,7 +123,7 @@ def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,varia
         print("    alt/maternal")
     transcript_num = 0
     # loop through each transcript
-    if_bi = False
+    #if_bi = False
     for transcript in altGene.transcripts:
         array = list(transcript.sequence)
         transcript_num += 1
@@ -132,7 +132,7 @@ def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,varia
         for variant in variants:
             trans_pos = transcript.mapToTranscript(variant.genomicPos)
             if len(variant.ref) == 1 and len(variant.alt) == 1 and trans_pos > 0:
-                if_bi = True
+                #if_bi = True
                 print(
                     " genomic pos is %d, trans pos is %d"
                     % (variant.genomicPos, trans_pos)
@@ -147,20 +147,20 @@ def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,varia
                     if allele == variant.ref or allele == variant.alt:
                         matches += 1
                         mismatches += 1
-                # 0|0 case and (1|0 or 0|1 case)
+                # 0|0 case and (paternal 1|0 or 0|1 case)
                 if (
-                    variant.genotype[0] == variant.genotype[1]
+                    variant.genotype[0] == variant.genotype[1]                          # (maternal or paternal) with 0|0
                     and variant.genotype[0] == 0
                 ) or (
-                    variant.genotype[0] != variant.genotype[1] and int(haplotype) == 0
+                    variant.genotype[0] != variant.genotype[1] and int(haplotype) == 0  # paternal copy with het SNP
                 ):
                     array[trans_pos] = variant.ref
                 # 1|1 case and (1|0 or 0|1 case)
                 elif (
-                    variant.genotype[0] == variant.genotype[1]
+                    variant.genotype[0] == variant.genotype[1]                          # (maternal or paternal) with 1|1
                     and variant.genotype[0] == 1
                     or (
-                        variant.genotype[0] != variant.genotype[1]
+                        variant.genotype[0] != variant.genotype[1]                      # maternal copy with het SNP
                         and int(haplotype) == 1
                     )
                 ):
@@ -188,14 +188,14 @@ def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,varia
             % (transcript_num, num)
         )
         print(" ")
-    if if_bi == True:
-        return (
+    #if if_bi == True:
+    return (
             altGene,
             transcriptIdToBiSNPcount,
             transcriptIdToBiSNPpos,
         )  # , transcriptIdToBiSNPpos
-    else:
-        return None, None, None
+    #else:
+    #    return None, None, None
 
 
 #################################### randomly choose a quality score line
@@ -414,12 +414,12 @@ with open(file_prefix + "_geneID-numReads.txt", "w") as file_handler:
             gene, 1, variants
         )
         paternal, _, _ = makeAltCopy(gene, 0, variants)
-        if isinstance(maternal, type(None)):
-            print(
-                "!!!!! DEBUG: skipping gene %s because it does not contain biSNP"
-                % (geneid)
-            )
-            continue
+#         if isinstance(maternal, type(None)):
+#             print(
+#                 "!!!!! DEBUG: skipping gene %s because it does not contain biSNP"
+#                 % (geneid)
+#             )
+#             continue
         # file_handler.write("%s,%s,%s,%d\n" % (chrN, geneid, numReads, len(variants)))
         for i in range(numReads):
             (
