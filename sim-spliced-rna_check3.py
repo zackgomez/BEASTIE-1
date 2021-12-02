@@ -182,7 +182,7 @@ def makeAltCopy(gene, haplotype, variants):  # maternal=makeAltCopy(gene,0,varia
 
         transcript.sequence = "".join(array)
         transcriptIdToBiSNPcount[transcript.getID()] = num
-        print(transcriptIdToBiSNPpos)
+        # print(transcriptIdToBiSNPpos)
         print(
             "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
             % (transcript_num, num)
