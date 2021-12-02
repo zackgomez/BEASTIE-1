@@ -247,19 +247,22 @@ def simRead(refTranscript, altTranscript, rec1, fragLen):
     # L = 100
     # fragLen = 80
     lastStart = L - fragLen  # 20
-    start1 = random.randrange(lastStart + 1)  # 10
+    start1 = random.randrange(0,lastStart + 1)  # 10
     end1 = start1 + rec1.readLen  # 10+75 = 85
-    end2 = start1 + fragLen  # 10+80 = 90
+    start2 = random.randrange(start1,L-rec1.readLen)  # 90-75 = 15
+    end2 = start2 + rec1.readLen  # 10+80 = 90
     print(
         "DEBUG: quality seq length %d,start-end : %d-%d" % (rec1.readLen, start1, end1)
     )
-    # start2 = end2 - rec2.readLen  # 90-75 = 15
+
     refSeq = refTranscript.sequence[start1:end1]
-    refSeq_rev = Seq(refSeq).reverse_complement()
+    refSeq_2 = refTranscript.sequence[start2:end2]
+    refSeq_rev = Seq(refSeq_2).reverse_complement()
     print("REF FWD: %s" % (refSeq))
     # print("REF REV: %s"%(refSeq))
     altSeq = altTranscript.sequence[start1:end1]
-    altSeq_rev = Seq(altSeq).reverse_complement()
+    altSeq_2 = altTranscript.sequence[start2:end2]
+    altSeq_rev = Seq(altSeq_2).reverse_complement()
     print("ALT FWD: %s" % (altSeq))
     # print("ALT REV: %s"%(altSeq))
     return (refSeq, refSeq_rev, altSeq, altSeq_rev, rec1.qual)
@@ -423,12 +426,12 @@ with open(file_prefix + "_geneID-numReads.txt", "w") as file_handler:
         # file_handler.write("%s,%s,%s,%d\n" % (chrN, geneid, numReads, len(variants)))
         for i in range(numReads):
             (
-                matTranscript,
                 patTranscript,
+                matTranscript,
                 th_transcript,
                 transcriptID,
                 bivariant,
-            ) = pickTranscript(maternal, paternal, transcriptIdToBiSNPpos)
+            ) = pickTranscript(paternal,maternal,transcriptIdToBiSNPpos)
             length = matTranscript.getLength()
             rec1 = nextSamRec(IN, samFile)
             # rec2 = nextSamRec(IN, samFile)
@@ -473,7 +476,7 @@ with open(file_prefix + "_geneID-numReads.txt", "w") as file_handler:
             )
             nextReadID += 1
             printRead(
-                "@READ-ALT-RWD-" + str(geneid) + "-" + str(nextReadID) + " SIM",
+                "@READ-ALT-FWD-" + str(geneid) + "-" + str(nextReadID) + " SIM",
                 altSeq,
                 qual,
                 OUT1,
