@@ -302,41 +302,42 @@ def simRead(
     ):
         if_overlap = True
 
-    print(
-        "while_loop:%d ,geneid: %s - readID: %s, pos %d, FWD seq length %d,REV seq length %d, REF FWD start-end : %d-%d, REF REV start-end : %d-%d,ALT FWD start-end : %d-%d, ALT REV start-end : %d-%d, if overlap? %s"
-        % (
-            n_while,
-            geneid,
-            nextReadID,
-            trans_pos,
-            rec1.readLen,
-            rec2.readLen,
-            ref_start,
-            ref_end,
-            ref_rev_start,
-            ref_rev_end,
-            alt_start,
-            alt_end,
-            alt_rev_start,
-            alt_rev_end,
-            if_overlap,
-        )
-    )
     refSeq = refTranscript.sequence[ref_start:ref_end]
     refSeq_rev = Seq(
         refTranscript.sequence[ref_rev_start:ref_rev_end]
     ).reverse_complement()
-    print("REF FWD: %s" % (refSeq))
-    print("REF REV: %s" % (refSeq_rev))
     altSeq = altTranscript.sequence[alt_start:alt_end]
     altSeq_rev = Seq(
         altTranscript.sequence[alt_rev_start:alt_rev_end]
     ).reverse_complement()
-    print("ALT FWD: %s" % (altSeq))
-    print("ALT REV: %s" % (altSeq_rev))
+
     if str(refSeq) == str(altSeq):
         return (None, None, None, None, None, None)
     else:
+        print(
+            "while_loop:%d ,geneid: %s - readID: %s, pos %d, FWD seq length %d,REV seq length %d, REF FWD start-end : %d-%d, REF REV start-end : %d-%d,ALT FWD start-end : %d-%d, ALT REV start-end : %d-%d, if overlap? %s"
+            % (
+                n_while,
+                geneid,
+                nextReadID,
+                trans_pos,
+                rec1.readLen,
+                rec2.readLen,
+                ref_start,
+                ref_end,
+                ref_rev_start,
+                ref_rev_end,
+                alt_start,
+                alt_end,
+                alt_rev_start,
+                alt_rev_end,
+                if_overlap,
+            )
+        )
+        print("REF FWD: %s" % (refSeq))
+        print("REF REV: %s" % (refSeq_rev))
+        print("ALT FWD: %s" % (altSeq))
+        print("ALT REV: %s" % (altSeq_rev))
         return (refSeq, refSeq_rev, altSeq, altSeq_rev, rec1.qual, rec2.qual)
 
 
@@ -487,7 +488,7 @@ n_break = 0
 counter = 0
 with open(output_path + "/simulation_info.txt", "w") as file_handler:
     file_handler.write(
-        "chrN,geneid,num_variants,nth_reads,nth_transcript_picked,transcriptID,num_biSNP,REF_FWD,ALT_FWD,REF-quality,REF_REV,ALT_FWD,ALT_REV,ALT-quality\n"
+        "chrN,geneid,n_while,num_variants,nth_reads,nth_transcript_picked,transcriptID,num_biSNP,REF_FWD,ALT_FWD,REF-quality,REF_REV,ALT_FWD,ALT_REV,ALT-quality\n"
     )
     for idx, gene in enumerate(genes):
         counter += 1
@@ -560,10 +561,11 @@ with open(output_path + "/simulation_info.txt", "w") as file_handler:
                 )
 
             file_handler.write(
-                "%s,%s,%d,%d,%s,%s,%s,%s,%s,%s,%s,%s,%s\n"
+                "%s,%s,%d,%d,%d,%s,%s,%s,%s,%s,%s,%s,%s,%s\n"
                 % (
                     chrN,
                     geneid,
+                    n_while,
                     len(variants),
                     i + 1,
                     th_transcript + 1,
