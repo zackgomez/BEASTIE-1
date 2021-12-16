@@ -57,6 +57,7 @@ import ProgramName
 import random
 import copy
 import gzip
+import os
 from collections import defaultdict
 from GffTranscriptReader import GffTranscriptReader
 from Pipe import Pipe
@@ -91,10 +92,17 @@ mismatches = 0  # number of sites having neither ref nor alt allele in transcrip
 rex = Rex()
 
 
-def simRead(refTranscript, altTranscript, rec1, rec2, fragLen, nextReadID, geneid):
+def simRead_random_patmat(
+    refTranscript, altTranscript, rec1, rec2, fragLen, nextReadID, geneid
+):
+    random_prob = random.random()
+    if_mat = False
+    if random_prob >= 0.5:
+        if_mat = True
+
     L = len(refTranscript.sequence)
     if L < fragLen or L < readLen:
-        return (None, None, None, None, None, None)
+        return (None, None, None, None, None)
     # L = 100
     # fragLen = 80
     lastStart = L - fragLen  # 20
@@ -104,18 +112,35 @@ def simRead(refTranscript, altTranscript, rec1, rec2, fragLen, nextReadID, genei
     start2 = end2 - rec2.readLen  # 90-75 = 15
 
     print(
-        "@SIM-%s-%s, FWD seq length %d,REV seq length %d, FWD start-end : %d-%d, REV start-end : %d-%d"
-        % (nextReadID, geneid, rec1.readLen, rec2.readLen, start1, end1, start2, end2)
+        "@SIM-%s-%s, if maternal: %s, FWD seq length %d,REV seq length %d, FWD start-end : %d-%d, REV start-end : %d-%d"
+        % (
+            nextReadID,
+            geneid,
+            if_mat,
+            rec1.readLen,
+            rec2.readLen,
+            start1,
+            end1,
+            start2,
+            end2,
+        )
     )
     refSeq = refTranscript.sequence[start1:end1]
     refSeq_rev = Seq(refTranscript.sequence[start2:end2]).reverse_complement()
-    print("@SIM-%s-%s,REF FWD: %s" % (nextReadID, geneid, refSeq))
-    print("@SIM-%s-%s,REF REV: %s" % (nextReadID, geneid, refSeq_rev))
     altSeq = altTranscript.sequence[start1:end1]
     altSeq_rev = Seq(altTranscript.sequence[start2:end2]).reverse_complement()
-    print("@SIM-%s-%s,ALT FWD: %s" % (nextReadID, geneid, altSeq))
-    print("@SIM-%s-%s,ALT REV: %s" % (nextReadID, geneid, altSeq_rev))
-    return (refSeq, refSeq_rev, altSeq, altSeq_rev, rec1.qual, rec2.qual)
+    if if_mat is True:
+        randomseq = altSeq
+        randomseq_rev = altSeq_rev
+        print("@SIM-%s-%s,ALT FWD: %s" % (nextReadID, geneid, altSeq))
+        print("@SIM-%s-%s,ALT REV: %s" % (nextReadID, geneid, altSeq_rev))
+    else:
+        randomseq = refSeq
+        randomseq_rev = refSeq_rev
+        print("@SIM-%s-%s,REF FWD: %s" % (nextReadID, geneid, refSeq))
+        print("@SIM-%s-%s,REF REV: %s" % (nextReadID, geneid, refSeq_rev))
+    print("")
+    return (randomseq, randomseq_rev, rec1.qual, rec2.qual, if_mat)
 
 
 # =========================================================================
@@ -127,7 +152,7 @@ if len(sys.argv) != 6:
         + " <config-file> <per-base-read-depth> <prefix> <out-read1.gz> <out-read2.gz>\n"
     )
 (configFile, DEPTH, prefix, outFile1, outFile2) = sys.argv[1:]
-DEPTH = int(DEPTH) / 2
+DEPTH = int(DEPTH)
 
 # Load config file
 configFile = ConfigFile(configFile)
@@ -168,8 +193,9 @@ n_break = 0
 counter = 0
 with open(output_path + "/simulation_info.txt", "w") as file_handler:
     file_handler.write(
-        "identifier_REF,identifier_ALT,chrN,geneid,num_variants,nth_reads,nth_transcript_picked,transcriptID,num_biSNP,REF_FWD,ALT_FWD,REF-quality,REF_REV,ALT_FWD,ALT_REV,ALT-quality\n"
+        "identifier_random,chrN,geneid,num_variants,nth_reads,nth_transcript_picked,transcriptID,num_biSNP,random_FWD,FWD-quality,random_REV,REV-quality\n"
     )
+
     print(
         f"{datetime.now()} processing {len(genes)} genes for transcripts",
         file=sys.stderr,
@@ -283,7 +309,6 @@ with open(output_path + "/simulation_info.txt", "w") as file_handler:
             "%s,gene: %s,#reads: %s,total #variants in VCF: %d"
             % (chrN, geneid, numReads, len(variants))
         )
-
         maternal, transcriptIdToBiSNPcount, transcriptIdToBiSNPpos = makeAltCopy(
             gene, 1, variants
         )
@@ -307,63 +332,67 @@ with open(output_path + "/simulation_info.txt", "w") as file_handler:
             rec1 = nextSamRec(IN, samFile)
             rec2 = nextSamRec(IN, samFile)
             fragLen = fragLens[random.randrange(len(fragLens))]
-            n_while_loop = 0
             if length < fragLen:
                 fragLen = length
-            refSeq, refSeq_rev, altSeq, altSeq_rev, qual1, qual2 = simRead(
-                patTranscript, matTranscript, rec1, rec2, fragLen, nextReadID, geneid
+            (randomSeq, randomSeq_rev, qual1, qual2, if_mat,) = simRead_random_patmat(
+                patTranscript,
+                matTranscript,
+                rec1,
+                rec2,
+                fragLen,
+                nextReadID,
+                geneid,
             )
-            if refSeq is None:
-                n_break += 1  # break  # gene is shorter than fragment length
-                continue
-            identifier_REF = "@SIM-" + str(nextReadID) + "-" + str(geneid)
-            identifier_ALT = "@SIM-" + str(nextReadID + 1) + "-" + str(geneid)
+            if randomSeq is None:
+                n_break += 1
+                continue  # gene is shorter than fragment length
+
+            identifier_random = "@SIM-" + str(nextReadID) + "-" + str(geneid)
             file_handler.write(
-                "%s,%s,%s,%s,%d,%d,%s,%s,%s,%s,%s,%s,%s,%s,%s\n"
+                "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n"
                 % (
-                    identifier_REF,
-                    identifier_ALT,
-                    chrN,
+                    identifier_random,
+                    str(chrN),
                     geneid,
-                    len(variants),
-                    i + 1,
-                    th_transcript + 1,
+                    str(len(variants)),
+                    str(i + 1),
+                    str(th_transcript + 1),
                     transcriptID,
                     bivariant,
-                    refSeq,
-                    altSeq,
+                    randomSeq,
                     qual1,
-                    refSeq_rev,
-                    altSeq_rev,
+                    randomSeq_rev,
                     qual2,
                 )
             )
             # ref+alt
             printRead(
-                "@SIM-" + str(nextReadID) + "-" + str(geneid) + ":REF:FWD" + " /1",
-                refSeq,
+                "@SIM-"
+                + str(nextReadID)
+                + "-"
+                + str(geneid)
+                + ":"
+                + str(if_mat)
+                + ":FWD"
+                + " /1",
+                randomSeq,
                 qual1,
                 OUT1,
-            )
-            printRead(
-                "@SIM-" + str(nextReadID) + "-" + str(geneid) + ":REF:REV" + " /2",
-                refSeq_rev,
-                qual2,
-                OUT2,
             )
 
             nextReadID += 1
 
             # ref+alt
             printRead(
-                "@SIM-" + str(nextReadID) + "-" + str(geneid) + ":ALT:FWD" + " /1",
-                altSeq,
-                qual1,
-                OUT1,
-            )
-            printRead(
-                "@SIM-" + str(nextReadID) + "-" + str(geneid) + ":ALT:REV" + " /2",
-                altSeq_rev,
+                "@SIM-"
+                + str(nextReadID)
+                + "-"
+                + str(geneid)
+                + ":"
+                + str(if_mat)
+                + ":FWD"
+                + " /1",
+                randomSeq_rev,
                 qual2,
                 OUT2,
             )
