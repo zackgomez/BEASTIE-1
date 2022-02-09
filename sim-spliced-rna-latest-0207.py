@@ -2,38 +2,6 @@
 # =========================================================================
 # This version has latest modification by Scarlett at 02/07/2022
 # =========================================================================
-from __future__ import (
-    absolute_import,
-    division,
-    print_function,
-    unicode_literals,
-    generators,
-    nested_scopes,
-    with_statement,
-)
-from builtins import (
-    bytes,
-    dict,
-    int,
-    list,
-    object,
-    range,
-    str,
-    ascii,
-    chr,
-    hex,
-    input,
-    next,
-    oct,
-    open,
-    pow,
-    round,
-    super,
-    filter,
-    map,
-    zip,
-)
-
 from splice_reads import (
     constructTwoBitInput,
     run2bitBatch,
@@ -42,10 +10,7 @@ from splice_reads import (
     pickTranscript,
     loadFragLens,
     printRead,
-    loadTranscriptSeqs,
-    readFrom2bit,
     Variant,
-    SamRecord,
     chunk_iter,
 )
 
@@ -53,15 +18,12 @@ from splice_reads import (
 # Python 3.  You might need to update your version of module "future".
 import sys
 import random
-import copy
 import gzip
 import os
-from collections import defaultdict
-from BEASTIE.misc_tools.GffTranscriptReader import GffTranscriptReader
-from BEASTIE.misc_tools.Pipe import Pipe
-from BEASTIE.misc_tools.ConfigFile import ConfigFile
-from BEASTIE.misc_tools.Translation import Translation
-from BEASTIE.misc_tools.Rex import Rex
+from misc_tools.GffTranscriptReader import GffTranscriptReader
+from misc_tools.Pipe import Pipe
+from misc_tools.ConfigFile import ConfigFile
+from misc_tools.Rex import Rex
 from Bio.Seq import Seq
 from pathlib import Path
 from datetime import datetime
@@ -133,6 +95,52 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
     # )
 
 
+def tabix_regions(target_file_path, regions, line_processor, comment_char="#"):
+    CHUNK_SIZE = 1000
+    regions_processed = 0
+    region_to_results = {}
+
+    print(
+        f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
+    )
+
+    for x in chunk_iter(iter(regions), CHUNK_SIZE):
+        """
+        x stands for gene level chr: start-end
+        look up 1000 genes at a time
+        """
+        region_batch = " ".join(x)
+        cmd = f"tabix --separate-regions {target_file_path} {region_batch}"
+        output = Pipe.run(cmd)
+        if len(output) == 0:
+            continue
+
+        lines = output.split("\n")
+        records = []
+        for line in lines:
+            if len(line) == 0:
+                continue
+            # start accumulating new region
+            if line.startswith(comment_char):
+                region_str = line[1:]
+                records = []
+                region_to_results[region_str] = records
+                continue
+
+            result = line_processor(line)
+            if result is not None:
+                records.append(result)
+
+        regions_processed += len(x)
+        print(
+            f"{datetime.now()} ... finished {regions_processed} / {len(regions)} regions"
+        )
+
+    print(f"{datetime.now()} Got {len(region_to_results)} regions with data")
+
+    return region_to_results
+
+
 # =========================================================================
 # main()
 # =========================================================================
@@ -141,6 +149,7 @@ if len(sys.argv) != 8:
         os.path.basename(sys.argv[0])
         + " <config-file> <per-base-read-depth> <if_random> <if_print> <prefix> <out-read1.gz> <out-read2.gz>\n"
     )
+
 (configFile, DEPTH, if_random, if_print, prefix, outFile1, outFile2) = sys.argv[1:]
 if_print = if_print == "True"
 if if_print:
@@ -235,152 +244,51 @@ print(
     file=sys.stderr,
     flush=True,
 )
-####### extract regions for genes from GTF
-# dict1: region_str_to_genes {(gene)chr:start-end}:{gene object from GTF list}
-#######
-print(
-    f"{datetime.now()} Start constructing region_str_to_genes dict",
-    file=sys.stderr,
-    flush=True,
-)
-region_str_to_genes = {}
+
+## Build list of regions to extract
+regions = set()
 for idx, gene in enumerate(genes):
     counter += 1
     num_gene += 1
 
     region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
-    if region_str in region_str_to_genes:
-        region_str_to_genes[region_str].append(gene)
-    else:
-        region_str_to_genes[region_str] = [gene]
-
-print(
-    f"{datetime.now()} Got {len(region_str_to_genes)} regions to tabix",
-    file=sys.stderr,
-    flush=True,
-)
-
-####### extract regions for genes from VCF file
-# dict2: gene_to_variants {gene object from GTF list}:{records from VCF}
-#######
-
-CHUNK_SIZE = 1000
-regions_processed = 0
-gene_to_variants = {}
-print(
-    f"{datetime.now()} Start constructing gene_to_variants dict",
-    file=sys.stderr,
-    flush=True,
-)
-for x in chunk_iter(iter(region_str_to_genes.keys()), CHUNK_SIZE):
-    """
-    x stands for gene level chr: start-end
-    look up 1000 genes at a time
-    """
-    regions = " ".join(x)
-    cmd = f"tabix --separate-regions {vcfFile} {regions}"
-    output = Pipe.run(cmd)
-    if len(output) == 0:
-        continue
-
-    lines = output.split("\n")
-    for line in lines:
-        if len(line) == 0:
-            continue
-        if line.startswith("#"):
-            region_str = line[1:]
-            if region_str not in region_str_to_genes:
-                print(
-                    f"{datetime.now()} bad region_str: '{region_str}'",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            assert region_str in region_str_to_genes
-            genes = region_str_to_genes[region_str]
-            records = []
-            for gene in genes:
-                gene_to_variants[gene] = records
-            continue
-
-        fields = line.rstrip().split()
-        if len(fields) != 10:
-            raise Exception("Expecting 10 fields in VCF file")
-        variant = Variant(fields)
-        if not variant.isOK():
-            continue
-        if not variant.isHet() and not variant.isHomozygousAlt():
-            continue
-        records.append(variant)
-    regions_processed += len(x)
-    print(
-        f"{datetime.now()} ... finished {regions_processed} / {len(region_str_to_genes)} tabix regions",
-        file=sys.stderr,
-        flush=True,
-    )
-
-print(
-    f"{datetime.now()} Got {len(gene_to_variants)} genes with variants from VCF",
-    file=sys.stderr,
-    flush=True,
-)
-
-####### extract quality string score
-# dict3: gene_to_qualityStr {gene object from GTF list}:{quality string score from sam.gz}
-#######
-
-regions_processed = 0
-gene_to_qualityStr = {}
-print(
-    f"{datetime.now()} Start constructing gene_to_qualityStr dict",
-    file=sys.stderr,
-    flush=True,
-)
-for x in chunk_iter(iter(region_str_to_genes.keys()), CHUNK_SIZE):
-    regions = " ".join(x)
-    cmd = f"tabix --separate-regions {samFile} {regions}"
-    output = Pipe.run(cmd)
-    if len(output) == 0:
-        continue
-    lines = output.split("\n")
-    for line in lines:
-        if len(line) == 0:
-            continue
-        if line.startswith("@"):
-            region_str = line[1:]
-            if region_str not in region_str_to_genes:
-                print(
-                    f"{datetime.now()} bad region_str: '{region_str}'",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            assert region_str in region_str_to_genes
-            genes = region_str_to_genes[region_str]
-            recs = []
-            for gene in genes:
-                gene_to_qualityStr[gene] = recs
-            continue
-
-        fields = line.rstrip().split()
-        if int(fields[8]) == 0:
-            continue
-        if len(fields) < 11:
-            continue
-        # print(fields)
-        quality_string = fields[10]
-        # print(quality_string)
-        recs.append(quality_string)
-    regions_processed += len(x)
-    print(
-        f"{datetime.now()} ... finished {regions_processed} / {len(region_str_to_genes)} tabix regions",
-        file=sys.stderr,
-        flush=True,
-    )
+    regions.add(region_str)
 
 
-print(
-    f"{datetime.now()} Got {len(gene_to_qualityStr)} genes with quality strings from SAM.GZ",
-    file=sys.stderr,
-    flush=True,
+## Fetch variants from .vcf
+def variant_processor(line):
+    fields = line.rstrip().split()
+    if len(fields) != 10:
+        raise Exception("Expecting 10 fields in VCF file")
+
+    variant = Variant(fields)
+    if not variant.isOK():
+        return None
+    if not variant.isHet() and not variant.isHomozygousAlt():
+        return None
+    return variant
+
+
+region_str_to_variants = tabix_regions(vcfFile, regions, variant_processor)
+
+
+## Fetch quality scores from .sam
+def quality_string_processor(line):
+    fields = line.rstrip().split()
+    if int(fields[8]) == 0:
+        return None
+    if len(fields) < 11:
+        return None
+    quality_string = fields[10]
+
+    return quality_string
+
+
+region_str_to_quality_strings = tabix_regions(
+    samFile,
+    regions,
+    quality_string_processor,
+    comment_char="@",
 )
 
 #######
@@ -388,33 +296,31 @@ print(
 #######
 processed_genes = 0
 recorded_genes = 0
-for (gene, qual_strs) in gene_to_qualityStr.items():
-    # loop through each gene object that has mapped reads in SAM file
+for gene in genes:
+    region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
+
     chrN = gene.getSubstrate()
     geneid = gene.getId()
     length = gene.longestTranscript().getLength()
     numReads = int(float(DEPTH / readLen) * length)
+
     processed_genes += 1
-    # check the number of variants from VCF file for each gene object
-    if gene in gene_to_variants:
-        variants = gene_to_variants[gene]
-    else:
-        if if_print:
-            print(f"{chrN},gene: {geneid}, not in gene_to_variants dict, skip")
-        continue
-    if len(variants) == 0:
-        # if if_print:
+
+    if not region_str in region_str_to_variants:
         print(f"{chrN},gene: {geneid}, no hets in VCF, skip")
         continue
-    if len(qual_strs) == 0:
-        # if if_print:
+    if not region_str in region_str_to_quality_strings:
         print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
         continue
+
+    variants = region_str_to_variants[region_str]
+    qual_strs = region_str_to_quality_strings[region_str]
+
     recorded_genes += 1
     if if_print:
         print(
-            "%s:%s-%s,%s,#reads: %s,total #variants in VCF: %d"
-            % (chrN, gene.getBegin(), gene.getEnd(), geneid, numReads, len(variants))
+            "%s,%s,#reads: %s,total #variants in VCF: %d"
+            % (region_str, geneid, numReads, len(variants))
         )
 
     maternal, transcriptIdToBiSNPcount, transcriptIdToBiSNPpos = makeAltCopy(
@@ -575,7 +481,7 @@ for (gene, qual_strs) in gene_to_qualityStr.items():
 
     if processed_genes % 100 == 0:
         print(
-            f"{datetime.now()} processed {processed_genes} / {len(gene_to_qualityStr)} genes : {round(100*processed_genes/len(gene_to_qualityStr),2)} %",
+            f"{datetime.now()} processed {processed_genes} / {len(genes)} genes : {round(100*processed_genes/len(genes),2)} %",
             file=sys.stderr,
             flush=True,
         )

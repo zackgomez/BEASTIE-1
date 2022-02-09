@@ -40,19 +40,13 @@ from builtins import (
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
 import sys
-import ProgramName
 import random
 import copy
-import gzip
 import os
 from collections import defaultdict
-from GffTranscriptReader import GffTranscriptReader
-from Pipe import Pipe
-from ConfigFile import ConfigFile
-from Translation import Translation
-from Rex import Rex
-from Bio.Seq import Seq
-from pathlib import Path
+from misc_tools.Pipe import Pipe
+from misc_tools.Translation import Translation
+from misc_tools.Rex import Rex
 from datetime import datetime
 
 # ============================================
